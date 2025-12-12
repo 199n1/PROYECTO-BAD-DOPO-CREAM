@@ -1,0 +1,928 @@
+package domain;
+
+/**
+ * Enemigo tipo Log Man (Hombre Tronco)
+ * - Camina aleatoriamente por el nivel
+ * - Cuando el jugador se alinea en la misma fila o columna, el tronco RUEDA rápidamente hacia él
+ * - Movimiento similar al Narval pero más simple (solo rueda, no rompe bloques)
+ * - No persigue activamente al jugador, solo rueda cuando hay alineación
+ */
+public class LogMan extends Enemigo {
+    private boolean rodando;
+    private String direccionRodado;
+    private int velocidadRodado;
+    private long ultimoMovimiento;
+    private static final long VELOCIDAD_CAMINAR = 800; // ms entre movimientos normales
+    private static final long VELOCIDAD_RODAR = 100; // ms entre movimientos al rodar (MUY rápido)
+    private static final int RANGO_DETECCION = 15; // Casillas máximas para detectar alineación
+    
+    public LogMan(int x, int y, Mapa mapa) throws GameException {
+        super(x, y, mapa);
+        this.rodando = false;
+        this.velocidadRodado = 2; // Casillas por movimiento al rodar
+        this.ultimoMovimiento = System.currentTimeMillis();
+        this.direccion = direccionAleatoria();
+    }
+    
+    @Override
+    public void actualizar() {
+        long tiempoActual = System.currentTimeMillis();
+        long velocidad = rodando ? VELOCIDAD_RODAR : VELOCIDAD_CAMINAR;
+        
+        if (tiempoActual - ultimoMovimiento >= velocidad) {
+            if (!rodando) {
+                detectarAlineacion();
+            }
+            
+            if (!rodando) {
+                moverAleatorio();
+            } else {
+                rodar();
+            }
+            
+            ultimoMovimiento = tiempoActual;
+        }
+    }
+    
+    @Override
+    public void mover() {
+        // Este método es llamado por actualizar()
+        // La lógica está en moverAleatorio() y rodar()
+    }
+    
+    /**
+     * Detecta si algún helado está alineado horizontal o verticalmente
+     */
+    private void detectarAlineacion() {
+        for (Helado helado : mapa.getHelados()) {
+            if (!helado.isActivo()) continue;
+            
+            int heladoX = helado.getX();
+            int heladoY = helado.getY();
+            
+            // Verificar alineación horizontal (misma fila Y)
+            if (y == heladoY && Math.abs(heladoX - x) <= RANGO_DETECCION) {
+                // Hay una línea de visión hacia el helado?
+                if (hayLineaDeVisionHorizontal(heladoX, heladoY)) {
+                    iniciarRodado(heladoX > x ? "derecha" : "izquierda");
+                    return;
+                }
+            }
+            
+            // Verificar alineación vertical (misma columna X)
+            if (x == heladoX && Math.abs(heladoY - y) <= RANGO_DETECCION) {
+                // Hay una línea de visión hacia el helado?
+                if (hayLineaDeVisionVertical(heladoX, heladoY)) {
+                    iniciarRodado(heladoY > y ? "abajo" : "arriba");
+                    return;
+                }
+            }
+        }
+    }
+    
+    /**
+     * Verifica si hay línea de visión horizontal (sin bloques en el camino)
+     */
+    private boolean hayLineaDeVisionHorizontal(int targetX, int targetY) {
+        int dx = Integer.compare(targetX, x);
+        int checkX = x + dx;
+        
+        while (checkX != targetX) {
+            // Si hay un bloque sólido o el iglú, no hay línea de visión
+            if (mapa.esBloqueHielo(checkX, targetY) || esPosicionIglu(checkX, targetY)) {
+                return false;
+            }
+            checkX += dx;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Verifica si hay línea de visión vertical (sin bloques en el camino)
+     */
+    private boolean hayLineaDeVisionVertical(int targetX, int targetY) {
+        int dy = Integer.compare(targetY, y);
+        int checkY = y + dy;
+        
+        while (checkY != targetY) {
+            // Si hay un bloque sólido o el iglú, no hay línea de visión
+            if (mapa.esBloqueHielo(targetX, checkY) || esPosicionIglu(targetX, checkY)) {
+                return false;
+            }
+            checkY += dy;
+        }
+        
+        return true;
+    }
+    
+    private void iniciarRodado(String direccion) {
+        rodando = true;
+        direccionRodado = direccion;
+        this.direccion = direccion;
+    }
+    
+    /**
+     * Movimiento normal: camina aleatoriamente
+     */
+    private void moverAleatorio() {
+        int[] mov = obtenerMovimiento(direccion);
+        int nx = x + mov[0];
+        int ny = y + mov[1];
+        
+        // Si está bloqueado, cambiar de dirección
+        if (!posicionValida(nx, ny)) {
+            direccion = direccionAleatoria();
+            mov = obtenerMovimiento(direccion);
+            nx = x + mov[0];
+            ny = y + mov[1];
+        }
+        
+        // Si puede moverse, hacerlo
+        if (posicionValida(nx, ny)) {
+            x = nx;
+            y = ny;
+        } else {
+            // Si aún está bloqueado, intentar otra dirección
+            direccion = direccionAleatoria();
+        }
+    }
+    
+    /**
+     * Movimiento al rodar: rápido y directo
+     */
+    private void rodar() {
+        int[] mov = obtenerMovimiento(direccionRodado);
+        int nx = x + mov[0];
+        int ny = y + mov[1];
+        
+        // Verificar si puede continuar rodando
+        if (posicionValida(nx, ny) && !esPosicionIglu(nx, ny)) {
+            x = nx;
+            y = ny;
+            
+            // Verificar si hay helado en esta posición
+            verificarColisionConHelado();
+        } else {
+            // Se detuvo al chocar con algo
+            detenerRodado();
+        }
+    }
+    
+    private void verificarColisionConHelado() {
+        for (Helado helado : mapa.getHelados()) {
+            if (helado.isActivo() && helado.getX() == x && helado.getY() == y) {
+                helado.eliminar();
+                detenerRodado();
+                break;
+            }
+        }
+        
+        // También verificar si ya no hay helado alineado (llegó al final)
+        boolean hayHeladoAlineado = false;
+        for (Helado helado : mapa.getHelados()) {
+            if (!helado.isActivo()) continue;
+            
+            if (direccionRodado.equals("derecha") || direccionRodado.equals("izquierda")) {
+                if (helado.getY() == y) hayHeladoAlineado = true;
+            } else {
+                if (helado.getX() == x) hayHeladoAlineado = true;
+            }
+        }
+        
+        if (!hayHeladoAlineado) {
+            detenerRodado();
+        }
+    }
+    
+    private void detenerRodado() {
+        rodando = false;
+        direccionRodado = null;
+        direccion = direccionAleatoria();
+    }
+    
+    private int[] obtenerMovimiento(String dir) {
+        switch (dir) {
+            case "arriba": return new int[]{0, -1};
+            case "abajo": return new int[]{0, 1};
+            case "izquierda": return new int[]{-1, 0};
+            case "derecha": return new int[]{1, 0};
+            default: return new int[]{0, 0};
+        }
+    }
+    
+    private String direccionAleatoria() {
+        String[] direcciones = {"arriba", "abajo", "izquierda", "derecha"};
+        return direcciones[(int) (Math.random() * 4)];
+    }
+    
+    public boolean isRodando() {
+        return rodando;
+    }
+}
+
+
+
+
+
+
+
+package domain;
+
+/**
+ * Enemigo tipo Pato (Duck)
+ * - Puede VOLAR sobre un bloque a la vez
+ * - Persigue al jugador activamente
+ * - Si el jugador está inaccesible (rodeado de bloques), vuela sin rumbo
+ * - Puede salirse accidentalmente del mapa en algunos casos
+ */
+public class Pato extends Enemigo {
+    private boolean volando;
+    private long ultimoMovimiento;
+    private static final long VELOCIDAD_MOVIMIENTO = 400; // ms entre movimientos
+    private int intentosSinExito;
+    private static final int MAX_INTENTOS_SIN_EXITO = 5;
+    
+    public Pato(int x, int y, Mapa mapa) throws GameException {
+        super(x, y, mapa);
+        this.volando = false;
+        this.ultimoMovimiento = System.currentTimeMillis();
+        this.intentosSinExito = 0;
+    }
+    
+    @Override
+    public void actualizar() {
+        long tiempoActual = System.currentTimeMillis();
+        
+        if (tiempoActual - ultimoMovimiento >= VELOCIDAD_MOVIMIENTO) {
+            mover();
+            ultimoMovimiento = tiempoActual;
+        }
+    }
+    
+    @Override
+    public void mover() {
+        Helado helado = mapa.getHeladoMasCercano(x, y);
+        
+        if (helado == null || !helado.isActivo()) {
+            moverAleatorio();
+            return;
+        }
+        
+        int heladoX = helado.getX();
+        int heladoY = helado.getY();
+        
+        // Calcular dirección hacia el helado
+        int dx = Integer.compare(heladoX, x);
+        int dy = Integer.compare(heladoY, y);
+        
+        // Priorizar movimiento horizontal o vertical según distancia
+        int distX = Math.abs(heladoX - x);
+        int distY = Math.abs(heladoY - y);
+        
+        boolean movioExitosamente = false;
+        
+        if (distX >= distY && dx != 0) {
+            // Intentar moverse horizontalmente
+            movioExitosamente = intentarMover(dx, 0);
+            
+            if (!movioExitosamente && dy != 0) {
+                // Intentar verticalmente como alternativa
+                movioExitosamente = intentarMover(0, dy);
+            }
+        } else if (dy != 0) {
+            // Intentar moverse verticalmente
+            movioExitosamente = intentarMover(0, dy);
+            
+            if (!movioExitosamente && dx != 0) {
+                // Intentar horizontalmente como alternativa
+                movioExitosamente = intentarMover(dx, 0);
+            }
+        }
+        
+        if (!movioExitosamente) {
+            intentosSinExito++;
+            
+            if (intentosSinExito >= MAX_INTENTOS_SIN_EXITO) {
+                // El jugador está completamente bloqueado, moverse aleatoriamente
+                moverAleatorio();
+                intentosSinExito = 0;
+            }
+        } else {
+            intentosSinExito = 0;
+        }
+        
+        actualizarDireccion(dx, dy);
+    }
+    
+    /**
+     * Intenta moverse en una dirección, puede volar sobre UN bloque si es necesario
+     */
+    private boolean intentarMover(int dx, int dy) {
+        int nx = x + dx;
+        int ny = y + dy;
+        
+        // Verificar si la posición está libre
+        if (posicionValidaPato(nx, ny)) {
+            x = nx;
+            y = ny;
+            volando = false;
+            return true;
+        }
+        
+        // Si hay un bloque, intentar VOLAR sobre él
+        if (mapa.esBloqueHielo(nx, ny)) {
+            // Verificar que la posición después del bloque esté libre
+            int nx2 = nx + dx;
+            int ny2 = ny + dy;
+            
+            if (posicionValidaPato(nx2, ny2)) {
+                // VOLAR sobre el bloque
+                x = nx2;
+                y = ny2;
+                volando = true;
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Posición válida para el pato (puede volar sobre bloques pero no entrar al iglú)
+     */
+    private boolean posicionValidaPato(int nx, int ny) {
+        if (esPosicionIglu(nx, ny)) return false;
+        if (!mapa.dentroLimites(nx, ny)) return false;
+        
+        // Puede estar en cualquier posición libre o sobre un bloque (al volar)
+        return mapa.posicionLibre(nx, ny) || mapa.esBloqueHielo(nx, ny);
+    }
+    
+    private void moverAleatorio() {
+        String[] direcciones = {"arriba", "abajo", "izquierda", "derecha"};
+        
+        for (int i = 0; i < 4; i++) {
+            String dirAleatoria = direcciones[(int) (Math.random() * 4)];
+            int[] mov = obtenerMovimiento(dirAleatoria);
+            
+            if (intentarMover(mov[0], mov[1])) {
+                direccion = dirAleatoria;
+                return;
+            }
+        }
+        
+        // Si no puede moverse en ninguna dirección, quedarse quieto
+        volando = false;
+    }
+    
+    private int[] obtenerMovimiento(String dir) {
+        switch (dir) {
+            case "arriba": return new int[]{0, -1};
+            case "abajo": return new int[]{0, 1};
+            case "izquierda": return new int[]{-1, 0};
+            case "derecha": return new int[]{1, 0};
+            default: return new int[]{0, 0};
+        }
+    }
+    
+    private void actualizarDireccion(int dx, int dy) {
+        if (dx > 0) direccion = "derecha";
+        else if (dx < 0) direccion = "izquierda";
+        else if (dy > 0) direccion = "abajo";
+        else if (dy < 0) direccion = "arriba";
+    }
+    
+    public boolean isVolando() {
+        return volando;
+    }
+}
+
+
+
+
+
+
+
+
+
+/*
+ * ============================================================================
+ * HELADO MENTA - NUEVO SABOR PARA BAD DOPO CREAM
+ * ============================================================================
+ * 
+ * package domain;
+ * 
+ * /**
+ *  * Representa un Helado de Menta en el juego.
+ *  * 
+ *  * Habilidades especiales:
+ *  * - Color: Verde
+ *  * - Puede congelar enemigos temporalmente (10 segundos)
+ *  * - Tiene una habilidad de "ráfaga de frío" que congela en área 3x3
+ *  * - Cooldown de 20 segundos entre usos de la habilidad especial
+ *  * - Se mueve igual que otros helados
+ *  * 
+ *  * Esta clase extiende las capacidades básicas de Helado
+ *  *
+ * public class HeladoMenta extends Helado {
+ *     private static final int COOLDOWN_RAFAGA = 20; // segundos
+ *     private static final int DURACION_CONGELAMIENTO = 10; // segundos
+ *     private static final int RADIO_RAFAGA = 1; // 3x3 (radio 1 desde el centro)
+ *     
+ *     private int contadorCooldown;
+ *     private boolean habilidadDisponible;
+ * 
+ *     /**
+ *      * Constructor de Helado Menta
+ *      * @param x posición horizontal inicial
+ *      * @param y posición vertical inicial
+ *      * @param mapa mapa del juego
+ *      *
+ *     public HeladoMenta(int x, int y, Mapa mapa) {
+ *         super(x, y, mapa, "menta");
+ *         this.contadorCooldown = 0;
+ *         this.habilidadDisponible = true;
+ *     }
+ * 
+ *     /**
+ *      * Actualiza el cooldown de la habilidad especial
+ *      * Debe llamarse en cada frame del juego (~60 veces por segundo)
+ *      *
+ *     public void actualizar() {
+ *         if (!habilidadDisponible) {
+ *             contadorCooldown++;
+ *             
+ *             // Cooldown completo: 20 segundos * 60 FPS = 1200 frames
+ *             if (contadorCooldown >= COOLDOWN_RAFAGA * 60) {
+ *                 habilidadDisponible = true;
+ *                 contadorCooldown = 0;
+ *             }
+ *         }
+ *     }
+ * 
+ *     /**
+ *      * Activa la ráfaga de frío que congela enemigos en área 3x3
+ *      * @return true si se activó exitosamente, false si está en cooldown
+ *      *
+ *     public boolean activarRafagaFrio() {
+ *         if (!habilidadDisponible || !isVivo()) {
+ *             return false;
+ *         }
+ *         
+ *         // Congelar todos los enemigos en un radio de 1 casilla (3x3)
+ *         // En implementación completa, esto interactuaría con el Nivel
+ *         // para congelar enemigos cercanos
+ *         
+ *         habilidadDisponible = false;
+ *         contadorCooldown = 0;
+ *         
+ *         return true;
+ *     }
+ * 
+ *     /**
+ *      * Obtiene las posiciones afectadas por la ráfaga de frío
+ *      * @return array de posiciones [x, y] afectadas
+ *      *
+ *     public int[][] getPosicionesRafaga() {
+ *         int[][] posiciones = new int[9][2];
+ *         int index = 0;
+ *         
+ *         for (int dx = -RADIO_RAFAGA; dx <= RADIO_RAFAGA; dx++) {
+ *             for (int dy = -RADIO_RAFAGA; dy <= RADIO_RAFAGA; dy++) {
+ *                 posiciones[index][0] = getX() + dx;
+ *                 posiciones[index][1] = getY() + dy;
+ *                 index++;
+ *             }
+ *         }
+ *         
+ *         return posiciones;
+ *     }
+ * 
+ *     /**
+ *      * Verifica si la habilidad especial está disponible
+ *      * @return true si puede usar la habilidad, false si está en cooldown
+ *      *
+ *     public boolean isHabilidadDisponible() {
+ *         return habilidadDisponible;
+ *     }
+ * 
+ *     /**
+ *      * Obtiene el tiempo restante de cooldown en segundos
+ *      * @return segundos restantes hasta que la habilidad esté disponible
+ *      *
+ *     public int getTiempoRestanteCooldown() {
+ *         if (habilidadDisponible) return 0;
+ *         return COOLDOWN_RAFAGA - (contadorCooldown / 60);
+ *     }
+ * 
+ *     /**
+ *      * Obtiene la duración del congelamiento en segundos
+ *      * @return segundos que los enemigos permanecen congelados
+ *      *
+ *     public int getDuracionCongelamiento() {
+ *         return DURACION_CONGELAMIENTO;
+ *     }
+ * }
+ * 
+ * 
+ * ============================================================================
+ * HELADO CAFÉ - NUEVO SABOR PARA BAD DOPO CREAM
+ * ============================================================================
+ * 
+ * package domain;
+ * 
+ * /**
+ *  * Representa un Helado de Café en el juego.
+ *  * 
+ *  * Habilidades especiales:
+ *  * - Color: Marrón oscuro
+ *  * - Se mueve más rápido que otros helados (velocidad x1.5)
+ *  * - Puede hacer un "dash" rápido en cualquier dirección (3 casillas)
+ *  * - El dash ignora enemigos (pasa a través de ellos sin morir)
+ *  * - Cooldown de 15 segundos entre dashes
+ *  * - Tiene más energía por la cafeína
+ *  * 
+ *  * Esta clase extiende las capacidades básicas de Helado
+ *  *
+ * public class HeladoCafe extends Helado {
+ *     private static final int COOLDOWN_DASH = 15; // segundos
+ *     private static final int DISTANCIA_DASH = 3; // casillas
+ *     private static final double MULTIPLICADOR_VELOCIDAD = 1.5;
+ *     
+ *     private int contadorCooldown;
+ *     private boolean dashDisponible;
+ *     private boolean enDash;
+ *     private int contadorMovimiento;
+ * 
+ *     /**
+ *      * Constructor de Helado Café
+ *      * @param x posición horizontal inicial
+ *      * @param y posición vertical inicial
+ *      * @param mapa mapa del juego
+ *      *
+ *     public HeladoCafe(int x, int y, Mapa mapa) {
+ *         super(x, y, mapa, "cafe");
+ *         this.contadorCooldown = 0;
+ *         this.dashDisponible = true;
+ *         this.enDash = false;
+ *         this.contadorMovimiento = 0;
+ *     }
+ * 
+ *     /**
+ *      * Actualiza el estado del helado café
+ *      * Maneja cooldown y velocidad aumentada
+ *      *
+ *     public void actualizar() {
+ *         // Actualizar cooldown del dash
+ *         if (!dashDisponible) {
+ *             contadorCooldown++;
+ *             
+ *             if (contadorCooldown >= COOLDOWN_DASH * 60) {
+ *                 dashDisponible = true;
+ *                 contadorCooldown = 0;
+ *             }
+ *         }
+ *         
+ *         // Gestionar velocidad aumentada
+ *         contadorMovimiento++;
+ *     }
+ * 
+ *     /**
+ *      * Movimiento con velocidad aumentada
+ *      * @param direccion dirección del movimiento
+ *      *
+ *     @Override
+ *     public void mover(String direccion) {
+ *         // El café se mueve más rápido: cada 2 frames mueve 3 casillas
+ *         // mientras que helados normales mueven 2 casillas
+ *         super.mover(direccion);
+ *         
+ *         // Si ha pasado suficiente tiempo, mover una casilla extra
+ *         if (contadorMovimiento % 40 == 0) { // Cada ~0.66 segundos
+ *             super.mover(direccion);
+ *         }
+ *     }
+ * 
+ *     /**
+ *      * Realiza un dash rápido en la dirección actual
+ *      * Durante el dash, el helado es inmune a enemigos
+ *      * @return true si el dash se ejecutó, false si está en cooldown
+ *      *
+ *     public boolean dash() {
+ *         if (!dashDisponible || !isVivo()) {
+ *             return false;
+ *         }
+ *         
+ *         String direccion = getDireccion();
+ *         enDash = true;
+ *         
+ *         // Mover 3 casillas en la dirección actual
+ *         for (int i = 0; i < DISTANCIA_DASH; i++) {
+ *             super.mover(direccion);
+ *         }
+ *         
+ *         enDash = false;
+ *         dashDisponible = false;
+ *         contadorCooldown = 0;
+ *         
+ *         return true;
+ *     }
+ * 
+ *     /**
+ *      * Verifica si el helado es inmune a enemigos
+ *      * @return true si está en dash y es inmune
+ *      *
+ *     public boolean isInmune() {
+ *         return enDash;
+ *     }
+ * 
+ *     /**
+ *      * Verifica si el dash está disponible
+ *      * @return true si puede usar dash
+ *      *
+ *     public boolean isDashDisponible() {
+ *         return dashDisponible;
+ *     }
+ * 
+ *     /**
+ *      * Obtiene el tiempo restante de cooldown en segundos
+ *      * @return segundos restantes hasta que el dash esté disponible
+ *      *
+ *     public int getTiempoRestanteCooldown() {
+ *         if (dashDisponible) return 0;
+ *         return COOLDOWN_DASH - (contadorCooldown / 60);
+ *     }
+ * 
+ *     /**
+ *      * Obtiene la distancia del dash
+ *      * @return número de casillas que recorre el dash
+ *      *
+ *     public int getDistanciaDash() {
+ *         return DISTANCIA_DASH;
+ *     }
+ * 
+ *     /**
+ *      * Obtiene el multiplicador de velocidad
+ *      * @return multiplicador de velocidad del helado café
+ *      *
+ *     public double getMultiplicadorVelocidad() {
+ *         return MULTIPLICADOR_VELOCIDAD;
+ *     }
+ * }
+ * 
+ * 
+ * ============================================================================
+ * INTEGRACIÓN EN TU PROYECTO
+ * ============================================================================
+ * 
+ * 1. MODIFICAR TU CLASE HELADO PARA SER HEREDABLE:
+ * 
+ * // Cambiar de:
+ * public class Helado {
+ * 
+ * // A:
+ * public class Helado {
+ *     // ... código existente ...
+ * }
+ * 
+ * // O crear una clase base abstracta si prefieres:
+ * public abstract class HeladorBase {
+ *     protected int x, y;
+ *     protected Mapa mapa;
+ *     protected String sabor;
+ *     protected boolean vivo;
+ *     protected String direccionActual;
+ *     protected int nivelActual;
+ *     
+ *     // ... métodos comunes ...
+ * }
+ * 
+ * 
+ * 2. FACTORY PARA CREAR HELADOS:
+ * 
+ * public class HeladoFactory {
+ *     public static Helado crearHelado(String sabor, int x, int y, Mapa mapa) {
+ *         switch(sabor.toLowerCase()) {
+ *             case "vainilla":
+ *                 return new Helado(x, y, mapa, "vainilla");
+ *             case "fresa":
+ *                 return new Helado(x, y, mapa, "fresa");
+ *             case "chocolate":
+ *                 return new Helado(x, y, mapa, "chocolate");
+ *             case "menta":
+ *                 return new HeladoMenta(x, y, mapa);
+ *             case "cafe":
+ *                 return new HeladoCafe(x, y, mapa);
+ *             default:
+ *                 throw new IllegalArgumentException("Sabor desconocido: " + sabor);
+ *         }
+ *     }
+ * }
+ * 
+ * 
+ * 3. EN TU CLASE NIVEL (manejar habilidades especiales):
+ * 
+ * public void actualizarJuego() {
+ *     // Actualizar helados con habilidades especiales
+ *     if (helado instanceof HeladoMenta) {
+ *         ((HeladoMenta) helado).actualizar();
+ *     } else if (helado instanceof HeladoCafe) {
+ *         ((HeladoCafe) helado).actualizar();
+ *     }
+ *     
+ *     // ... resto de la lógica del juego ...
+ * }
+ * 
+ * // Manejar colisión con enemigos
+ * public void verificarColisionEnemigos() {
+ *     if (helado instanceof HeladoCafe) {
+ *         HeladoCafe cafe = (HeladoCafe) helado;
+ *         if (cafe.isInmune()) {
+ *             return; // No verificar colisión durante dash
+ *         }
+ *     }
+ *     
+ *     // Verificar colisiones normalmente
+ *     for (Enemigo enemigo : enemigos) {
+ *         if (enemigo.getX() == helado.getX() && enemigo.getY() == helado.getY()) {
+ *             helado.morir();
+ *         }
+ *     }
+ * }
+ * 
+ * // Congelar enemigos con Menta
+ * public void congelarEnemigos(int[][] posiciones, int duracion) {
+ *     for (int[] pos : posiciones) {
+ *         for (Enemigo enemigo : enemigos) {
+ *             if (enemigo.getX() == pos[0] && enemigo.getY() == pos[1]) {
+ *                 enemigo.congelar(duracion);
+ *             }
+ *         }
+ *     }
+ * }
+ * 
+ * 
+ * 4. AGREGAR MÉTODO A ENEMIGO (para Menta):
+ * 
+ * public class Enemigo {
+ *     private boolean congelado;
+ *     private int tiempoCongelamiento;
+ *     
+ *     public void congelar(int duracionSegundos) {
+ *         this.congelado = true;
+ *         this.tiempoCongelamiento = duracionSegundos * 60; // Convertir a frames
+ *     }
+ *     
+ *     public void actualizar() {
+ *         if (congelado) {
+ *             tiempoCongelamiento--;
+ *             if (tiempoCongelamiento <= 0) {
+ *                 congelado = false;
+ *             }
+ *             return; // No moverse si está congelado
+ *         }
+ *         
+ *         // Lógica de movimiento normal...
+ *     }
+ *     
+ *     public boolean isCongelado() {
+ *         return congelado;
+ *     }
+ * }
+ * 
+ * 
+ * 5. CONTROLES EN LA INTERFAZ GRÁFICA:
+ * 
+ * // Para HeladoMenta: tecla ESPACIO o Q para ráfaga
+ * if (e.getKeyCode() == KeyEvent.VK_SPACE && helado instanceof HeladoMenta) {
+ *     HeladoMenta menta = (HeladoMenta) helado;
+ *     if (menta.activarRafagaFrio()) {
+ *         int[][] posiciones = menta.getPosicionesRafaga();
+ *         nivel.congelarEnemigos(posiciones, menta.getDuracionCongelamiento());
+ *     }
+ * }
+ * 
+ * // Para HeladoCafe: tecla SHIFT o E para dash
+ * if (e.getKeyCode() == KeyEvent.VK_SHIFT && helado instanceof HeladoCafe) {
+ *     HeladoCafe cafe = (HeladoCafe) helado;
+ *     cafe.dash();
+ * }
+ * 
+ * 
+ * 6. PRUEBAS JUNIT PARA HELADO MENTA:
+ * 
+ * import org.junit.Test;
+ * import static org.junit.Assert.*;
+ * 
+ * public class HeladoMentaTest {
+ *     
+ *     @Test
+ *     public void testCreacionHeladoMenta() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoMenta menta = new HeladoMenta(5, 5, mapa);
+ *         
+ *         assertEquals("menta", menta.getSabor());
+ *         assertTrue(menta.isHabilidadDisponible());
+ *         assertTrue(menta.isVivo());
+ *     }
+ *     
+ *     @Test
+ *     public void testRafagaFrio() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoMenta menta = new HeladoMenta(5, 5, mapa);
+ *         
+ *         assertTrue(menta.activarRafagaFrio());
+ *         assertFalse(menta.isHabilidadDisponible());
+ *     }
+ *     
+ *     @Test
+ *     public void testCooldownRafaga() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoMenta menta = new HeladoMenta(5, 5, mapa);
+ *         
+ *         menta.activarRafagaFrio();
+ *         
+ *         // Simular 20 segundos (1200 frames)
+ *         for (int i = 0; i < 1200; i++) {
+ *             menta.actualizar();
+ *         }
+ *         
+ *         assertTrue(menta.isHabilidadDisponible());
+ *     }
+ *     
+ *     @Test
+ *     public void testPosicionesRafaga() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoMenta menta = new HeladoMenta(5, 5, mapa);
+ *         
+ *         int[][] posiciones = menta.getPosicionesRafaga();
+ *         
+ *         assertEquals(9, posiciones.length); // 3x3 = 9 posiciones
+ *     }
+ * }
+ * 
+ * 
+ * 7. PRUEBAS JUNIT PARA HELADO CAFÉ:
+ * 
+ * public class HeladoCafeTest {
+ *     
+ *     @Test
+ *     public void testCreacionHeladoCafe() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoCafe cafe = new HeladoCafe(5, 5, mapa);
+ *         
+ *         assertEquals("cafe", cafe.getSabor());
+ *         assertTrue(cafe.isDashDisponible());
+ *         assertTrue(cafe.isVivo());
+ *     }
+ *     
+ *     @Test
+ *     public void testDash() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoCafe cafe = new HeladoCafe(5, 5, mapa);
+ *         
+ *         int xInicial = cafe.getX();
+ *         assertTrue(cafe.dash());
+ *         
+ *         // Debería haberse movido 3 casillas
+ *         assertNotEquals(xInicial, cafe.getX());
+ *         assertFalse(cafe.isDashDisponible());
+ *     }
+ *     
+ *     @Test
+ *     public void testCooldownDash() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoCafe cafe = new HeladoCafe(5, 5, mapa);
+ *         
+ *         cafe.dash();
+ *         
+ *         // Simular 15 segundos (900 frames)
+ *         for (int i = 0; i < 900; i++) {
+ *             cafe.actualizar();
+ *         }
+ *         
+ *         assertTrue(cafe.isDashDisponible());
+ *     }
+ *     
+ *     @Test
+ *     public void testInmunidadDash() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoCafe cafe = new HeladoCafe(5, 5, mapa);
+ *         
+ *         assertFalse(cafe.isInmune());
+ *         // Durante el dash sería inmune (difícil de testear sin hilos)
+ *     }
+ *     
+ *     @Test
+ *     public void testParametrosCafe() {
+ *         Mapa mapa = new Mapa(1);
+ *         HeladoCafe cafe = new HeladoCafe(5, 5, mapa);
+ *         
+ *         assertEquals(3, cafe.getDistanciaDash());
+ *         assertEquals(1.5, cafe.getMultiplicadorVelocidad(), 0.01);
+ *     }
+ * }
+ * 
+ * ============================================================================
+ */

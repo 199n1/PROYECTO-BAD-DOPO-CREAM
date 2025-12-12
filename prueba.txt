@@ -1,0 +1,593 @@
+GAME ENGINE
+Para agregar un nuevo obstáculo: Usa setConfiguracionNivel() con el nuevo tipo
+Para agregar un nuevo enemigo: Similar, usa setConfiguracionNivel() con el nuevo enemigo
+Para agregar una nueva fruta: Usa setConfiguracionNivel() y actualiza el método verificarReglas() si la fruta tiene comportamiento especial
+
+/*
+ * ============================================================================
+ * SANDÍA - NUEVA FRUTA PARA BAD DOPO CREAM
+ * ============================================================================
+ * 
+ * package domain;
+ * 
+ * /**
+ *  * Representa una Sandía en el juego.
+ *  * 
+ *  * Comportamiento especial:
+ *  * - Vale 175 puntos
+ *  * - Es estática pero "pesada": los enemigos no pueden pasar sobre ella
+ *  * - Bloquea el movimiento como un obstáculo temporal hasta ser recolectada
+ *  * - Cada 25 segundos gotea agua que congela el suelo (crea hielo temporal)
+ *  * 
+ *  * Esta fruta añade un elemento estratégico: protege al jugador de enemigos
+ *  * pero también puede bloquear sus propios caminos.
+ *  *
+ * public class Sandia extends Fruta {
+ *     private static final int PUNTOS_SANDIA = 175;
+ *     private static final int TIEMPO_GOTEO = 25; // segundos
+ *     
+ *     private int contadorGoteo;
+ *     private boolean bloqueaMovimiento;
+ * 
+ *     /**
+ *      * Constructor de Sandía
+ *      * @param x posición horizontal
+ *      * @param y posición vertical
+ *      *
+ *     public Sandia(int x, int y) {
+ *         super(x, y, PUNTOS_SANDIA);
+ *         this.contadorGoteo = 0;
+ *         this.bloqueaMovimiento = true;
+ *     }
+ * 
+ *     @Override
+ *     public String getTipo() {
+ *         return "SANDIA";
+ *     }
+ * 
+ *     /**
+ *      * Actualiza el estado de la sandía.
+ *      * Cada 25 segundos (considerando ~60 actualizaciones por segundo),
+ *      * genera un efecto de "goteo" que podría crear hielo temporal.
+ *      *
+ *     @Override
+ *     public void actualizar() {
+ *         if (!activa) return;
+ *         
+ *         contadorGoteo++;
+ *         
+ *         // Cada 25 segundos (25 * 60 = 1500 actualizaciones)
+ *         if (contadorGoteo >= TIEMPO_GOTEO * 60) {
+ *             gotearAgua();
+ *             contadorGoteo = 0;
+ *         }
+ *     }
+ * 
+ *     /**
+ *      * Simula el goteo de agua de la sandía.
+ *      * En una implementación completa, esto crearía bloques de hielo
+ *      * temporales en las posiciones adyacentes.
+ *      *
+ *     private void gotearAgua() {
+ *         // En implementación completa, notificaría al nivel para crear hielo temporal
+ *         // System.out.println("¡La sandía gotea agua en posición (" + x + ", " + y + ")!");
+ *     }
+ * 
+ *     @Override
+ *     public void recolectar() {
+ *         super.recolectar();
+ *         bloqueaMovimiento = false;
+ *     }
+ * 
+ *     /**
+ *      * Indica si la sandía bloquea el movimiento.
+ *      * Mientras esté activa, actúa como un obstáculo.
+ *      * @return true si bloquea movimiento, false en caso contrario
+ *      *
+ *     public boolean bloqueaMovimiento() {
+ *         return activa && bloqueaMovimiento;
+ *     }
+ * 
+ *     /**
+ *      * Verifica si una entidad puede pasar sobre esta posición.
+ *      * Los enemigos y el jugador no pueden pasar mientras esté activa.
+ *      * @return false mientras la sandía esté activa
+ *      *
+ *     public boolean permiteMovimiento() {
+ *         return !activa;
+ *     }
+ * }
+ * 
+ * 
+ * ============================================================================
+ * INTEGRACIÓN EN TU PROYECTO
+ * ============================================================================
+ * 
+ * 1. EN TU FACTORY DE FRUTAS:
+ * 
+ * public class FrutaFactory {
+ *     public static Fruta crearFruta(String tipo, int x, int y) {
+ *         switch(tipo.toUpperCase()) {
+ *             case "UVA":
+ *                 return new Uva(x, y);
+ *             case "PLATANO":
+ *                 return new Platano(x, y);
+ *             case "CEREZA":
+ *                 return new Cereza(x, y);
+ *             case "PINA":
+ *                 return new Pina(x, y);
+ *             case "CACTUS":
+ *                 return new Cactus(x, y);
+ *             case "SANDIA":
+ *                 return new Sandia(x, y);
+ *             default:
+ *                 throw new IllegalArgumentException("Tipo desconocido: " + tipo);
+ *         }
+ *     }
+ * }
+ * 
+ * 
+ * 2. EN TU CLASE NIVEL (verificar bloqueo de movimiento):
+ * 
+ * public boolean posicionBloqueada(int x, int y) {
+ *     // Verificar obstáculos normales
+ *     if (hayObstaculo(x, y)) return true;
+ *     
+ *     // Verificar sandías activas que bloquean
+ *     for (Fruta fruta : frutas) {
+ *         if (fruta instanceof Sandia) {
+ *             Sandia sandia = (Sandia) fruta;
+ *             if (sandia.getX() == x && sandia.getY() == y && sandia.bloqueaMovimiento()) {
+ *                 return true;
+ *             }
+ *         }
+ *     }
+ *     return false;
+ * }
+ * 
+ * 
+ * 3. MANEJO DEL GOTEO (opcional - en Nivel):
+ * 
+ * private void manejarGoteoSandias() {
+ *     for (Fruta fruta : frutas) {
+ *         if (fruta instanceof Sandia) {
+ *             Sandia sandia = (Sandia) fruta;
+ *             // El goteo se maneja automáticamente en actualizar()
+ *             // Aquí podrías crear hielo temporal en posiciones adyacentes
+ *             if (sandia.isActiva()) {
+ *                 // Lógica para crear hielo temporal alrededor
+ *             }
+ *         }
+ *     }
+ * }
+ * 
+ * 
+ * 4. PRUEBAS JUNIT PARA SANDÍA:
+ * 
+ * import org.junit.Test;
+ * import static org.junit.Assert.*;
+ * 
+ * public class SandiaTest {
+ *     
+ *     @Test
+ *     public void testSandiaCreacion() {
+ *         Sandia sandia = new Sandia(5, 5);
+ *         assertEquals("SANDIA", sandia.getTipo());
+ *         assertEquals(175, sandia.getPuntos());
+ *         assertTrue(sandia.isActiva());
+ *         assertTrue(sandia.bloqueaMovimiento());
+ *     }
+ *     
+ *     @Test
+ *     public void testSandiaBloquea() {
+ *         Sandia sandia = new Sandia(5, 5);
+ *         assertTrue(sandia.bloqueaMovimiento());
+ *         assertFalse(sandia.permiteMovimiento());
+ *     }
+ *     
+ *     @Test
+ *     public void testSandiaRecoleccion() {
+ *         Sandia sandia = new Sandia(5, 5);
+ *         sandia.recolectar();
+ *         
+ *         assertFalse(sandia.isActiva());
+ *         assertFalse(sandia.bloqueaMovimiento());
+ *         assertTrue(sandia.permiteMovimiento());
+ *     }
+ *     
+ *     @Test
+ *     public void testSandiaGoteo() {
+ *         Sandia sandia = new Sandia(5, 5);
+ *         
+ *         // Simular 25 segundos a 60 FPS = 1500 actualizaciones
+ *         for (int i = 0; i < 1500; i++) {
+ *             sandia.actualizar();
+ *         }
+ *         
+ *         // El goteo debería ocurrir
+ *         // Verificar que se creó hielo temporal (si implementado)
+ *     }
+ *     
+ *     @Test
+ *     public void testSandiaNoActualizaSiInactiva() {
+ *         Sandia sandia = new Sandia(5, 5);
+ *         sandia.recolectar();
+ *         
+ *         // No debería hacer nada si está inactiva
+ *         for (int i = 0; i < 2000; i++) {
+ *             sandia.actualizar();
+ *         }
+ *         
+ *         assertFalse(sandia.isActiva());
+ *     }
+ * }
+ * 
+ * ============================================================================
+ */
+
+
+
+/*
+ * ============================================================================
+ * KIWI - NUEVA FRUTA PARA BAD DOPO CREAM
+ * ============================================================================
+ * 
+ * package domain;
+ * 
+ * import java.util.ArrayList;
+ * import java.util.List;
+ * 
+ * /**
+ *  * Representa un Kiwi en el juego.
+ *  * 
+ *  * Comportamiento especial:
+ *  * - Vale 180 puntos
+ *  * - Al ser recolectado, deja un rastro de bloques de hielo temporales
+ *  *   en las 4 direcciones (norte, sur, este, oeste)
+ *  * - Los bloques de hielo creados duran 15 segundos antes de derretirse
+ *  * - Es estático y no se mueve
+ *  * 
+ *  * Esta fruta añade un elemento estratégico defensivo: al recolectarla,
+ *  * creas automáticamente una protección temporal contra enemigos.
+ *  *
+ * public class Kiwi extends Fruta {
+ *     private static final int PUNTOS_KIWI = 180;
+ *     private static final int ALCANCE_RASTRO = 3; // casillas de hielo en cada dirección
+ *     private static final int DURACION_HIELO = 15; // segundos
+ *     
+ *     private boolean rastroCreado;
+ *     private List<PosicionRastro> posicionesRastro;
+ * 
+ *     /**
+ *      * Constructor de Kiwi
+ *      * @param x posición horizontal
+ *      * @param y posición vertical
+ *      *
+ *     public Kiwi(int x, int y) {
+ *         super(x, y, PUNTOS_KIWI);
+ *         this.rastroCreado = false;
+ *         this.posicionesRastro = new ArrayList<>();
+ *     }
+ * 
+ *     @Override
+ *     public String getTipo() {
+ *         return "KIWI";
+ *     }
+ * 
+ *     /**
+ *      * Actualiza el estado del kiwi.
+ *      * No tiene comportamiento temporal antes de ser recolectado.
+ *      *
+ *     @Override
+ *     public void actualizar() {
+ *         // El kiwi es estático, no necesita actualización constante
+ *         // La lógica del rastro se maneja al momento de recolección
+ *     }
+ * 
+ *     /**
+ *      * Recolecta el kiwi y crea el rastro de hielo.
+ *      * Sobrescribe el método base para agregar la funcionalidad del rastro.
+ *      *
+ *     @Override
+ *     public void recolectar() {
+ *         if (!activa) return;
+ *         
+ *         super.recolectar();
+ *         crearRastroHielo();
+ *     }
+ * 
+ *     /**
+ *      * Crea bloques de hielo temporales en las 4 direcciones cardinales.
+ *      * En una implementación completa, esto interactuaría con el Nivel
+ *      * para crear bloques de hielo reales.
+ *      *
+ *     private void crearRastroHielo() {
+ *         if (rastroCreado) return;
+ *         
+ *         // Direcciones: Norte, Sur, Este, Oeste
+ *         int[][] direcciones = {
+ *             {0, -1},  // Norte
+ *             {0, 1},   // Sur
+ *             {1, 0},   // Este
+ *             {-1, 0}   // Oeste
+ *         };
+ *         
+ *         for (int[] dir : direcciones) {
+ *             for (int i = 1; i <= ALCANCE_RASTRO; i++) {
+ *                 int nuevoX = x + (dir[0] * i);
+ *                 int nuevoY = y + (dir[1] * i);
+ *                 
+ *                 // Guardar la posición del rastro
+ *                 posicionesRastro.add(new PosicionRastro(nuevoX, nuevoY));
+ *                 
+ *                 // En implementación completa, notificar al Nivel:
+ *                 // nivel.crearBloqueHieloTemporal(nuevoX, nuevoY, DURACION_HIELO);
+ *             }
+ *         }
+ *         
+ *         rastroCreado = true;
+ *     }
+ * 
+ *     /**
+ *      * Obtiene las posiciones donde se debe crear hielo temporal.
+ *      * @return lista de posiciones para el rastro de hielo
+ *      *
+ *     public List<PosicionRastro> getPosicionesRastro() {
+ *         return new ArrayList<>(posicionesRastro);
+ *     }
+ * 
+ *     /**
+ *      * Indica si el rastro ya fue creado.
+ *      * @return true si el rastro fue creado, false en caso contrario
+ *      *
+ *     public boolean isRastroCreado() {
+ *         return rastroCreado;
+ *     }
+ * 
+ *     /**
+ *      * Obtiene el alcance del rastro de hielo.
+ *      * @return número de casillas de hielo en cada dirección
+ *      *
+ *     public int getAlcanceRastro() {
+ *         return ALCANCE_RASTRO;
+ *     }
+ * 
+ *     /**
+ *      * Obtiene la duración del hielo temporal en segundos.
+ *      * @return duración en segundos
+ *      *
+ *     public int getDuracionHielo() {
+ *         return DURACION_HIELO;
+ *     }
+ * 
+ *     /**
+ *      * Clase interna para representar una posición del rastro de hielo.
+ *      *
+ *     public static class PosicionRastro {
+ *         private final int x;
+ *         private final int y;
+ *         
+ *         public PosicionRastro(int x, int y) {
+ *             this.x = x;
+ *             this.y = y;
+ *         }
+ *         
+ *         public int getX() { return x; }
+ *         public int getY() { return y; }
+ *     }
+ * }
+ * 
+ * 
+ * ============================================================================
+ * INTEGRACIÓN EN TU PROYECTO
+ * ============================================================================
+ * 
+ * 1. EN TU CLASE NIVEL (manejar recolección de Kiwi):
+ * 
+ * public void recolectarFruta(Fruta fruta, Helado helado) {
+ *     if (fruta instanceof Kiwi) {
+ *         Kiwi kiwi = (Kiwi) fruta;
+ *         kiwi.recolectar();
+ *         
+ *         // Crear bloques de hielo temporal en las 4 direcciones
+ *         for (Kiwi.PosicionRastro pos : kiwi.getPosicionesRastro()) {
+ *             if (posicionValida(pos.getX(), pos.getY())) {
+ *                 crearBloqueHieloTemporal(pos.getX(), pos.getY(), kiwi.getDuracionHielo());
+ *             }
+ *         }
+ *         
+ *         helado.sumarPuntos(kiwi.getPuntos());
+ *     } else {
+ *         fruta.recolectar();
+ *         helado.sumarPuntos(fruta.getPuntos());
+ *     }
+ * }
+ * 
+ * 
+ * 2. BLOQUE DE HIELO TEMPORAL (nueva clase):
+ * 
+ * package domain;
+ * 
+ * public class BloqueHieloTemporal extends BloqueHielo {
+ *     private int tiempoRestante; // en actualizaciones (60 por segundo)
+ *     
+ *     public BloqueHieloTemporal(int x, int y, int duracionSegundos) {
+ *         super(x, y);
+ *         this.tiempoRestante = duracionSegundos * 60;
+ *     }
+ *     
+ *     @Override
+ *     public void actualizar() {
+ *         tiempoRestante--;
+ *         if (tiempoRestante <= 0) {
+ *             this.destruir(); // O marcar para eliminación
+ *         }
+ *     }
+ *     
+ *     public boolean debeDerretirse() {
+ *         return tiempoRestante <= 0;
+ *     }
+ *     
+ *     public int getTiempoRestante() {
+ *         return tiempoRestante / 60; // Devolver en segundos
+ *     }
+ * }
+ * 
+ * 
+ * 3. EN TU FACTORY DE FRUTAS:
+ * 
+ * public class FrutaFactory {
+ *     public static Fruta crearFruta(String tipo, int x, int y) {
+ *         switch(tipo.toUpperCase()) {
+ *             case "UVA":
+ *                 return new Uva(x, y);
+ *             case "PLATANO":
+ *                 return new Platano(x, y);
+ *             case "CEREZA":
+ *                 return new Cereza(x, y);
+ *             case "PINA":
+ *                 return new Pina(x, y);
+ *             case "CACTUS":
+ *                 return new Cactus(x, y);
+ *             case "KIWI":
+ *                 return new Kiwi(x, y);
+ *             default:
+ *                 throw new IllegalArgumentException("Tipo de fruta desconocido: " + tipo);
+ *         }
+ *     }
+ * }
+ * 
+ * 
+ * 4. MÉTODO AUXILIAR EN NIVEL:
+ * 
+ * public void crearBloqueHieloTemporal(int x, int y, int duracionSegundos) {
+ *     // Verificar que no hay obstáculo permanente
+ *     if (!hayObstaculoPermanente(x, y)) {
+ *         BloqueHieloTemporal bloque = new BloqueHieloTemporal(x, y, duracionSegundos);
+ *         obstaculosTemporales.add(bloque);
+ *     }
+ * }
+ * 
+ * public void actualizarObstaculosTemporales() {
+ *     List<BloqueHieloTemporal> aDerretir = new ArrayList<>();
+ *     
+ *     for (BloqueHieloTemporal bloque : obstaculosTemporales) {
+ *         bloque.actualizar();
+ *         if (bloque.debeDerretirse()) {
+ *             aDerretir.add(bloque);
+ *         }
+ *     }
+ *     
+ *     obstaculosTemporales.removeAll(aDerretir);
+ * }
+ * 
+ * 
+ * 5. PRUEBAS JUNIT PARA KIWI:
+ * 
+ * import org.junit.Test;
+ * import static org.junit.Assert.*;
+ * import java.util.List;
+ * 
+ * public class KiwiTest {
+ *     
+ *     @Test
+ *     public void testKiwiCreacion() {
+ *         Kiwi kiwi = new Kiwi(5, 5);
+ *         assertEquals("KIWI", kiwi.getTipo());
+ *         assertEquals(180, kiwi.getPuntos());
+ *         assertTrue(kiwi.isActiva());
+ *         assertFalse(kiwi.isRastroCreado());
+ *     }
+ *     
+ *     @Test
+ *     public void testKiwiRecoleccion() {
+ *         Kiwi kiwi = new Kiwi(5, 5);
+ *         kiwi.recolectar();
+ *         
+ *         assertFalse(kiwi.isActiva());
+ *         assertTrue(kiwi.isRastroCreado());
+ *     }
+ *     
+ *     @Test
+ *     public void testKiwiRastroHielo() {
+ *         Kiwi kiwi = new Kiwi(5, 5);
+ *         kiwi.recolectar();
+ *         
+ *         List<Kiwi.PosicionRastro> rastro = kiwi.getPosicionesRastro();
+ *         
+ *         // Debería crear 4 direcciones * 3 casillas = 12 bloques
+ *         assertEquals(12, rastro.size());
+ *     }
+ *     
+ *     @Test
+ *     public void testKiwiPosicionesRastro() {
+ *         Kiwi kiwi = new Kiwi(5, 5);
+ *         kiwi.recolectar();
+ *         
+ *         List<Kiwi.PosicionRastro> rastro = kiwi.getPosicionesRastro();
+ *         
+ *         // Verificar que hay posiciones en las 4 direcciones
+ *         boolean tieneNorte = false, tieneSur = false;
+ *         boolean tieneEste = false, tieneOeste = false;
+ *         
+ *         for (Kiwi.PosicionRastro pos : rastro) {
+ *             if (pos.getX() == 5 && pos.getY() < 5) tieneNorte = true;
+ *             if (pos.getX() == 5 && pos.getY() > 5) tieneSur = true;
+ *             if (pos.getX() > 5 && pos.getY() == 5) tieneEste = true;
+ *             if (pos.getX() < 5 && pos.getY() == 5) tieneOeste = true;
+ *         }
+ *         
+ *         assertTrue(tieneNorte && tieneSur && tieneEste && tieneOeste);
+ *     }
+ *     
+ *     @Test
+ *     public void testKiwiParametros() {
+ *         Kiwi kiwi = new Kiwi(5, 5);
+ *         assertEquals(3, kiwi.getAlcanceRastro());
+ *         assertEquals(15, kiwi.getDuracionHielo());
+ *     }
+ *     
+ *     @Test
+ *     public void testKiwiNoRastroSinRecolectar() {
+ *         Kiwi kiwi = new Kiwi(5, 5);
+ *         assertFalse(kiwi.isRastroCreado());
+ *         assertEquals(0, kiwi.getPosicionesRastro().size());
+ *     }
+ *     
+ *     @Test
+ *     public void testKiwiRastroAlcance() {
+ *         Kiwi kiwi = new Kiwi(10, 10);
+ *         kiwi.recolectar();
+ *         
+ *         List<Kiwi.PosicionRastro> rastro = kiwi.getPosicionesRastro();
+ *         
+ *         // Verificar que el alcance es correcto (3 casillas por dirección)
+ *         boolean tiene13_10 = false; // Este +3
+ *         boolean tiene7_10 = false;  // Oeste -3
+ *         boolean tiene10_13 = false; // Sur +3
+ *         boolean tiene10_7 = false;  // Norte -3
+ *         
+ *         for (Kiwi.PosicionRastro pos : rastro) {
+ *             if (pos.getX() == 13 && pos.getY() == 10) tiene13_10 = true;
+ *             if (pos.getX() == 7 && pos.getY() == 10) tiene7_10 = true;
+ *             if (pos.getX() == 10 && pos.getY() == 13) tiene10_13 = true;
+ *             if (pos.getX() == 10 && pos.getY() == 7) tiene10_7 = true;
+ *         }
+ *         
+ *         assertTrue(tiene13_10 && tiene7_10 && tiene10_13 && tiene10_7);
+ *     }
+ * }
+ * 
+ * 
+ * 6. EN TU CONFIGURACIÓN DE NIVELES:
+ * 
+ * // Ejemplo de nivel con Kiwi
+ * Nivel nivel3 = new Nivel(3);
+ * nivel3.agregarFruta(new Kiwi(10, 10));
+ * nivel3.agregarFruta(new Kiwi(15, 5));
+ * nivel3.agregarFruta(new Uva(8, 8));
+ * nivel3.agregarFruta(new Platano(12, 12));
+ * // ... resto de configuración
+ * 
+ * ============================================================================
+ */
